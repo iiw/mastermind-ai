@@ -23,7 +23,7 @@ python3 mastermind.py --task "Say hello" --max-minutes 1 --verbose
 > **Note:** pytest is a development-only dependency; the runtime orchestrator has zero external dependencies (stdlib only).
 
 **Helper scripts** in `tests/helpers/`:
-- `mock_hermes.py` — a tiny script that takes `--silent` or `--model` flags, reads stdin, and returns canned responses based on the input content (used by integration tests to avoid real Hermes calls).
+- `mock_hermes.py` — a tiny script that accepts `chat --cli -Q -q` style arguments, reads the `-q` value as the prompt, and returns canned responses based on input content (used by integration tests to avoid real Hermes calls).
 - `mock_slow_hermes.py` — like mock_hermes but sleeps for a configurable duration (to test timeouts).
 
 ---
@@ -164,10 +164,9 @@ python3 mastermind.py --task "Say hello" --max-minutes 1 --verbose
   2. Run with `--workdir /tmp` and verify `results/` created there.
 - **Expected:** Workspace root = `Path(args.workdir).resolve()` if provided, else `Path.cwd()`. All Hermes subprocesses use `cwd=workspace_root`. All snapshots scan `workspace_root`.
 
-### 2.14 — Non-interactive Hermes mode: `input=prompt` only (no `stdin=PIPE`)
-- **Type:** 📐 Code Inspection
-- **Steps:** Check all subprocess invocations for stdin handling.
-- **Expected:** All Hermes subprocess calls pass prompt via `input=` to `subprocess.run()`. The implementation must not pass `stdin=` explicitly together with `input=`. No call inherits parent terminal stdin.
+### 2.14 — Non-interactive Hermes mode: `-q` CLI arg (no `stdin` or `input=`)
+
+All Hermes subprocess calls use `hermes chat --cli -Q -q "{prompt}"`. The `-q` flag passes the prompt as a CLI argument, avoiding the TUI that opens when piping via stdin. There is no `input=` passed to `subprocess.run()`. The `--silent` flag is NOT a valid Hermes CLI argument.
 
 ### 2.15 — Session isolation: each Hermes call is a fresh subprocess
 - **Type:** 📐 Code Inspection
@@ -520,15 +519,15 @@ python3 mastermind.py --task "Say hello" --max-minutes 1 --verbose
 
 ## §6. Hermes Integration
 
-### 6.1 — Role calls pass prompt via stdin to `hermes --silent`
+### 6.1 — Role calls pass prompt via `-q` CLI arg to `hermes chat --cli -Q`
 - **Type:** 📐 Code Inspection
 - **Steps:** Find the subprocess invocation for role calls.
-- **Expected:** `subprocess.run([HERMES_BIN, "--silent"], input=prompt, ...)` — prompt passed via stdin.
+- **Expected:** `subprocess.run([HERMES_BIN, "chat", "--cli", "-Q", "-q", prompt], ...)` — prompt passed via `-q` flag, not stdin.
 
-### 6.2 — Executor calls pass instruction via stdin to `hermes` (no `--silent`)
+### 6.2 — Executor calls use same `hermes chat --cli -Q -q` pattern as role calls
 - **Type:** 📐 Code Inspection
 - **Steps:** Find the subprocess invocation for executor calls.
-- **Expected:** `subprocess.run([HERMES_BIN], input=instruction, ...)` — no `--silent` flag.
+- **Expected:** `subprocess.run([HERMES_BIN, "chat", "--cli", "-Q", "-q", instruction], ...)` — same pattern as role calls. No `input=` parameter.
 
 ### 6.3 — Role call subprocess timeout uses dynamic formula
 - **Type:** 📐 Code Inspection
@@ -545,13 +544,12 @@ python3 mastermind.py --task "Say hello" --max-minutes 1 --verbose
 - **Steps:** Find `HERMES_BIN` resolution.
 - **Expected:** Resolution order: `os.environ.get("MASTERMIND_HERMES_BIN")` → `os.environ.get("HERMES_BIN")` → `shutil.which("hermes")` → `Path.home() / ".local/bin/hermes"`.
 
-### 6.6 — `--silent` flag resilience: try `hermes --silent` first; if non-zero exit, retry WITHOUT `--silent`
+### 6.6 — No `--silent` fallback — all calls use `chat --cli -Q -q` directly (removed previously needed fallback)
 - **Type:** 🔗 Integration (mock-based)
 - **Steps:**
-  1. Use `mock_hermes.py` that exits non-zero when `--silent` is passed, but succeeds without it.
-  2. Configure `MASTERMIND_HERMES_BIN` to point to this mock.
-  3. Run the orchestrator.
-- **Expected:** The orchestrator retries the role call without `--silent` and proceeds.
+  1. Use `mock_hermes.py` that returns exit 0 with valid output.
+  2. Verify args list contains `["chat", "--cli", "-Q", "-q", prompt]`.
+- **Expected:** The orchestrator no longer uses `--silent` at all. No `--silent` flag appears in any subprocess invocation. No fallback logic exists.
 
 ### 6.7 — Model override: `HERMES_MODEL` env var set when `--model` is used
 - **Type:** 📐 Code Inspection
@@ -630,10 +628,10 @@ python3 mastermind.py --task "Say hello" --max-minutes 1 --verbose
   3. Generate large stdout from role call mock.
 - **Expected:** Executor stdout capped at 200K chars. Role call stdout capped at 20K chars. `stdout_truncated_by_orchestrator` flag set when truncation occurs.
 
-### 6.21 — Non-interactive mode enforced: all subprocess calls use `input=` (no `stdin=subprocess.PIPE`)
+### 6.21 — Non-interactive mode enforced: all subprocess calls use `-q` CLI arg (no `stdin` or `input=`)
 - **Type:** 📐 Code Inspection
-- **Steps:** Check all subprocess invocations for stdin handling.
-- **Expected:** All Hermes subprocess calls pass prompt via `input=` to `subprocess.run()`. No `stdin=subprocess.PIPE` alongside `input=`. No stdin inheritance from terminal.
+- **Steps:** Check all subprocess invocations for their argument lists and input handling.
+- **Expected:** All Hermes subprocess calls pass prompt via the `-q` flag as part of the args list (`["chat", "--cli", "-Q", "-q", prompt]`). No `input=` parameter is passed to `subprocess.run()`. No `stdin=subprocess.PIPE`.
 
 ### 6.22 — Session isolation: each Hermes call is a fresh `subprocess.run`
 - **Type:** 📐 Code Inspection
@@ -893,10 +891,10 @@ python3 mastermind.py --task "Say hello" --max-minutes 1 --verbose
 - **Steps:** `is_likely_truncated("")`
 - **Expected:** Returns `False`. (Avoids false positive on empty output.)
 
-### 9.11 — `--silent` flag fallback: first call uses `--silent`; on non-zero exit, retry without `--silent`
-- **Type:** 🔗 Integration (mock-based)
-- **Steps:** Same as 6.6 — mock Hermes that fails with `--silent`, succeeds without.
-- **Expected:** Role call falls back after retry without `--silent`, continues normally.
+### 9.11 — No `--silent` fallback needed — all calls use `chat --cli -Q -q` directly
+- **Type:** 📐 Code Inspection
+- **Steps:** Inspect `call_hermes()` for any `--silent` flag or fallback logic.
+- **Expected:** The `--silent` flag is absent from all subprocess invocations. No fallback from `--silent` to plain hermes exists. All calls use `["chat", "--cli", "-Q", "-q", prompt]`.
 
 ### 9.12 — Parse error fallback sets `remaining_time_ok: true` and `next_hint: ""`
 - **Type:** 🔬 Unit

@@ -102,7 +102,7 @@ The **workspace root** is the single authoritative directory for all file operat
 
 ### 2.2b Non-Interactive Hermes Mode
 
-All Hermes subprocess calls pass their prompt or instruction via the `input=` argument to `subprocess.run()`. The implementation must not pass `stdin=` explicitly together with `input=`. This prevents Hermes from inheriting the parent terminal stdin and avoids interactive hangs.
+All Hermes subprocess calls use `hermes chat --cli -Q -q "{prompt}"` — the prompt is passed via the `-q` CLI argument, not stdin. The `-Q` flag suppresses the TUI splash banner and spinner for clean programmatic output. Piping the prompt via stdin opens the TUI (interactive mode) even with `--cli -Q`, so `-q` is the only reliable non-interactive invocation. The `--silent` flag does NOT exist in the Hermes CLI.
 
 ### 2.2c Session Isolation
 
@@ -723,40 +723,35 @@ The orchestrator shells out to the `hermes` CLI. The exact invocation varies sli
 
 #### Role Calls (Delegator / Evaluator / Finalizer)
 
-Prompt passed via **stdin** (most portable — no flag-dependence):
+Prompt passed via `-q` CLI argument:
 
 ```bash
-echo "<role_prompt>" | hermes --silent 2>/dev/null
+hermes chat --cli -Q -q "<role_prompt>" 2>/dev/null
 ```
 
 Or equivalently in Python:
 
 ```python
 proc = subprocess.run(
-    [HERMES_BIN, "--silent"],
-    input=prompt,
+    ["hermes", "chat", "--cli", "-Q", "-q", prompt],
     capture_output=True, text=True,
-    timeout=max(MIN_ROLE_TIMEOUT_SEC, min(ROLE_TIMEOUT_SEC, remaining_sec)),  # dynamic: fast but never below floor
+    timeout=max(MIN_ROLE_TIMEOUT_SEC, min(ROLE_TIMEOUT_SEC, remaining_sec)),
 )
 output = proc.stdout.strip()
 ```
 
 #### Executor Calls (task execution)
 
-Instruction passed via stdin:
+Instruction passed via `-q` CLI argument (same pattern as role calls):
 
 ```bash
-echo "<instruction>" | hermes 2>/dev/null
+hermes chat --cli -Q -q "<instruction>" 2>/dev/null
 ```
 
 ```python
-# Dynamic timeout: bounded to remaining budget so one slow call
-# cannot consume the entire run; remaining_sec is computed by the
-# caller and passed into the Hermes call helper.
 executor_timeout = max(1, min(max_minutes * 60, remaining_sec + margin_sec))
 proc = subprocess.run(
-    [HERMES_BIN],
-    input=instruction,
+    ["hermes", "chat", "--cli", "-Q", "-q", instruction],
     capture_output=True, text=True,
     timeout=executor_timeout,
 )
@@ -780,25 +775,23 @@ def resolve_hermes_bin(args) -> str:
 
 The resolved value is used everywhere in place of a module-level constant. This ensures `--hermes-bin PATH` actually works.
 
-#### Flag Resilience (role calls)
+#### CLI Invocation — Role and Executor Calls
 
-The `--silent` flag may not be supported by all Hermes CLI versions. The orchestrator handles this with a fallback:
+All Hermes subprocess calls use the same invocation pattern — no distinction between role calls and executor calls at the CLI level:
 
 ```python
-# --silent: if role_call, try --silent; if that fails (non-zero exit
-# even after retry with valid input), retry without --silent
-role_args = [hermes_bin, "--silent"]
-role_args_fallback = [hermes_bin]  # without --silent
+args = [hermes_bin, "chat", "--cli", "-Q", "-q", prompt]
 
-# Model override: v1.5.2 uses env-only to avoid fragile --model flag
-if model_override:
-    env["HERMES_MODEL"] = model_override
+proc = subprocess.run(
+    args,
+    capture_output=True, text=True,
+    timeout=timeout,
+    env=env,
+    cwd=cwd,
+)
 ```
 
-**Execution strategy for role calls:**
-1. Try `hermes --silent`. If exit code 0 → use stdout.
-2. If exit code ≠ 0 (--silent not recognised) → retry without `--silent` flag.
-3. If both fail → use static fallback (see §9.3).
+The `--silent` flag does NOT exist in the Hermes CLI. Piping via stdin opens the TUI (interactive mode), so the `-q` flag is the only reliable non-interactive approach. No `input=` parameter is passed to `subprocess.run()`. If the call fails (non-zero exit), it is retried once (up to `MAX_ATTEMPTS = 2`). If both attempts fail, a static fallback is used (see §9.3).
 
 ### 6.2 Subprocess Settings
 
@@ -807,7 +800,7 @@ if model_override:
 | `timeout` | `max(MIN_ROLE_TIMEOUT_SEC, min(ROLE_TIMEOUT_SEC, remaining_sec))` — role calls are fast, never consume the full budget | `max(1, min(max_minutes * 60, remaining_sec + margin_sec))` — dynamic, cannot exceed remaining budget |
 | `capture_output` | `True` | `True` |
 | `text` | `True` | `True` |
-| `input` | Role prompt (system + user) | Instruction only |
+| Prompt via `-q` | Prompt text | Instruction text |
 | `env` | Inherits `PATH`, `HOME`; overrides `HERMES_PROFILE` if `--profile` set | Same |
 | `cwd` | workspace_root | workspace_root |
 

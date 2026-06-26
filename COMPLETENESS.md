@@ -141,12 +141,12 @@ Runtime has zero external dependencies. Tests may use pytest as a development-on
 
 | # | Criterion | SDD Ref | Status | Test |
 |---|---|---|---|---|
-| 6.1 | Role calls pass prompt via **stdin** to `hermes --silent` | §6.1 | ✅ | Code inspection: `input=prompt` |
-| 6.2 | Executor calls pass instruction via **stdin** to `hermes` (no `--silent` flag) | §6.1 | ✅ | Code inspection |
+| 6.1 | Role calls pass prompt via `-q` CLI arg to `hermes chat --cli -Q` | §6.1 | ✅ | Code inspection: no `input=` |
+| 6.2 | Executor calls also use `hermes chat --cli -Q -q` (same pattern as role calls) | §6.1 | ✅ | Code inspection |
 | 6.3 | Role call `subprocess.run` timeout uses dynamic formula: `max(MIN_ROLE_TIMEOUT_SEC, min(ROLE_TIMEOUT_SEC, remaining_sec))` | §6.1, §6.2 | ✅ | Code inspection |
 | 6.4 | Executor call `subprocess.run` timeout uses dynamic formula: `max(1, min(max_minutes * 60, remaining_sec + margin_sec))` | §6.1, §6.2 | ✅ | Code inspection |
 | 6.5 | Hermes binary resolution chain: `MASTERMIND_HERMES_BIN` → `HERMES_BIN` → `shutil.which("hermes")` → `~/.local/bin/hermes` | §6.1 | ✅ | Code inspection |
-| 6.6 | `--silent` flag resilience: try `hermes --silent` first; if non-zero exit, retry WITHOUT `--silent` | §6.1 | ✅ | Mock Hermes that rejects `--silent`; verify fallback works |
+| 6.6 | No `--silent` flag — all calls use `chat --cli -Q -q` directly (fallback removed) | §6.1 | ✅ | Code inspection |
 | 6.7 | Model override: `HERMES_MODEL` env var set in subprocess environment when `--model` is used | §6.1, §6.6 | ✅ | Code inspection |
 || 6.8 | `HERMES_MODEL` env var is the only model override mechanism (no `--model` flag passed) | §6.1 | ✅ | Code inspection |
 | 6.9 | Role calls retried once on non-zero exit or timeout (total `MAX_ATTEMPTS = 2`) | §6.3, §9.1 | ✅ | Mock non-zero exit; log shows retry |
@@ -225,7 +225,7 @@ Runtime has zero external dependencies. Tests may use pytest as a development-on
 | 9.8 | `is_likely_truncated()` function: returns `True` when output ends with `...`, `—`, `–`, `[truncated]`, or `[continues]` | §9.2 | ✅ | Unit test for each truncation indicator |
 | 9.9 | If truncation detected → `executor_output_likely_truncated: true` added to Evaluator context | §9.2 | ✅ | Inject truncated output; verify flag in Evaluator prompt |
 | 9.10 | `is_likely_truncated()` returns `False` for empty string (avoids false positive) | §9.2 | ✅ | Edge case test |
-| 9.11 | `--silent` flag fallback: first call uses `--silent`; on non-zero exit, retry without `--silent` | §6.1 | ✅ | Mock Hermes that fails with `--silent`, succeeds without |
+| 9.11 | No `--silent` fallback — all calls use `chat --cli -Q -q` | §6.1 | ✅ | Code inspection |
 | 9.12 | Parse error fallback sets `remaining_time_ok: true` and `next_hint: ""` as sensible defaults | §9.1 (implied) | ✅ | Code inspection of fallback dict |
 | 9.13 | Exit code 0: success — results file written, no errors, no fallbacks, no timeouts, no parse failures, no forced loop guard | §9.4 | ✅ | Verify after clean run |
 | 9.14 | Exit code 1: partial success — results file written but with warnings (Hermes fallback used, parse fallback, executor timeout, evaluator skipped, loop guard triggered, finalizer fallback) | §9.4 | ✅ | Trigger non-fatal fallback; verify exit code 1 |
