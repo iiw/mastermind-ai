@@ -59,6 +59,16 @@ No API keys, no pip packages. Every "thinking" step is a separate Hermes subproc
 | 🔢 Max iterations reached | Hard cap → Finalizer |
 | 💥 Fatal error (can't write file) | Error message, exit code 2 |
 
+## Exit Codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Clean success — Finalizer completed, results file written |
+| `1` | Partial success — results file written but with warnings (Finalizer fallback used, executor timeout, evaluator skipped, loop guard triggered, etc.) |
+| `2` | Failure — no results file; task incomplete (fatal error) |
+
+See `references/exit-codes.md` for real-world examples and how to verify results after a partial-success exit.
+
 ## Key Design Details
 
 - **Python 3.10+ only** — stdlib imports only, zero pip packages
@@ -68,7 +78,41 @@ No API keys, no pip packages. Every "thinking" step is a separate Hermes subproc
 - **File artifact detection** — snapshots working dir before/after executor for changed files
 - **Duplicate instruction guard** — `INSTRUCTION_DEDUP_WINDOW=3`, normalised prefix matching
 - **Retry logic** — `MAX_ATTEMPTS=2` (1 initial + 1 retry) per Hermes call
-- **Programmatic Hermes calls** — Hermes is called as `hermes chat --cli -Q -q "{prompt}"` (not via stdin pipe). The `--silent` flag does NOT exist in the Hermes CLI; piping via stdin opens the TUI. The `-q` flag passes the prompt as a CLI argument with `-Q` suppressing the splash banner.
+- **`chat --cli -Q` for programmatic calls** — Hermes is invoked as `hermes chat --cli -Q -q "{prompt}"` rather than via stdin pipe or a non-existent `--silent` flag. This gives clean text output (session_id + response) instead of the TUI splash screen. See `references/hermes-cli-programmatic.md` for full details.
+
+## Execution Patterns
+
+### Research / Analysis Pattern
+
+Research and analysis tasks converge quickly — typically **2 iterations** (~4 min on deepseek-v4-flash):
+
+1. **Iteration 1** — Delegator asks to explore the project/codebase (read files, understand structure)
+2. **Iteration 2** — Delegator asks to write the comprehensive report as a deliverable
+3. Evaluator sees the report exists and returns `"finalize"`
+
+This is very efficient for codebase analysis, technology comparison, trend research, or architecture review tasks. Budget `--max-minutes 5` for focused analysis, `--max-minutes 10` for deeper research.
+
+### Dual-Output Model
+
+The orchestrator produces output in **two locations** — don't look in only one:
+
+| Location | Writer | Content |
+|---|---|---|
+| `workdir/<DELIVERABLE>.md` | **Executor** | The full artifact (report, scaffold, analysis — whatever the task asked for). Can be 700+ lines / 40K+ chars. |
+| `results/final-task-<ns>-<pid>.md` | **Finalizer** | A short summary / conclusion (~2-3 KB). Always written atomically last. |
+
+When checking results after a run: **read the Executor artifact first**. The Finalizer file is a lightweight wrap-up, not the main deliverable.
+
+## Pitfalls
+
+| Pitfall | Solution |
+|---|---|
+| **`hermes --silent` doesn't exist** | The CLI flag `--silent` is unrecognized. Subprocess calls must use `hermes chat --cli -Q -q "{prompt}"`. The `-q` flag passes the prompt as a CLI argument; `-Q` suppresses the TUI banner/splash screen. |
+| **Stdin pipe opens TUI** | Piping a query to `hermes` via stdin opens the full TUI (splash screen artifacts in captured output). Always use `-q "prompt"` for programmatic calls. |
+| **Long prompts (~8K+ chars)** | `-q` passes the prompt as a single argv element, which is fine on Linux (ARG_MAX ~2MB). But watch for Hermes context limits — capping at `MAX_PROMPT_CHARS=8000` and `MAX_FINALIZER_PROMPT_CHARS=12000` is recommended. |
+| **Buffered stdout in bg** | When run in background mode, Python buffers stdout. The orchestrator's log output won't be visible until the process finishes. This is expected — results are written atomically to a file at the end. |
+| **Iteration timing is model-dependent** | The 30-45s/iteration estimate assumes a fast model (~10-15s per Hermes call). On slower models (deepseek-v4-flash, large Sonnets) each call takes ~40-50s, making each iteration **~100-150s**. Budget `--max-minutes` generously for slow models: a 10-min budget allows only ~4-6 iterations, not the 12-15 a fast model would give. |
+| **Finalizer timeout on slow models** | The Finalizer receives the largest prompt of all roles (full iteration history + up to 12K chars). On slow models the 60s `ROLE_TIMEOUT_SEC` (set in `mastermind.py` line 37) can fire. The orchestrator retries once then falls back to a minimal conclusion. The actual report is usually already written by the Executor — exit code 1 (partial success) is expected in this case. If you see `finalizer_fallback_used` warnings, the report is still valid; just check the output file. |
 
 ## Running Tests
 
@@ -83,14 +127,14 @@ MASTERMIND_HERMES_BIN=~/projects/mastermind-ai/tests/helpers/mock_hermes.py \
 
 ## Delivery: After the Report Is Ready
 
-**Once Mastermind AI finishes, you MUST deliver the report to the user — don't just leave it on disk.** The orchestrator writes results to `results/final-task-<timestamp>-<pid>.md` and may also create other output files (e.g. `ANALYSIS_REPORT.md`).
+**Once Mastermind AI finishes, you MUST deliver the report to the user — don't just leave it on disk.** The orchestrator writes results to `results/final-task-<timestamp>-<pid>.md` and may also create other output files (e.g. `ANALYSIS_REPORT.md`) written by the Executor directly to the working directory.
 
-Delivery checklist:
+### Delivery Checklist
 
 1. **Find the output file(s)** — check `results/` for the newest `.md` file (sorted by mtime) and scan the working directory for any additional report files the Executor created.
 2. **Verify the file** — read a few lines to confirm it's the real report, not a stub or error message. Check file size (>500 bytes is a good heuristic for a real report).
 3. **Send it** — include `MEDIA:/absolute/path/to/file` in your response to deliver the file natively (images, audio, video, or markdown documents). For text reports, you can also paste a concise summary alongside the file.
-4. **Clean up** — remove the generated report file from disk after sending (unless the user asks to keep it). Reports are artifacts of a single run and clutter the workspace.
+4. **Clean up** — remove the generated report file(s) from disk after sending (unless the user asks to keep them). Reports are artifacts of a single run and clutter the workspace.
 
 > 💡 **Why this matters:** The orchestrator runs in the background. The user has no way to know a file was written unless you proactively deliver it. Treat delivery as a non-negotiable part of every Mastermind AI run.
 
