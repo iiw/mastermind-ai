@@ -81,6 +81,19 @@ MASTERMIND_HERMES_BIN=~/projects/mastermind-ai/tests/helpers/mock_hermes.py \
   ~/projects/mastermind-ai/mastermind.py --task "Test" --max-minutes 1
 ```
 
+## Delivery: After the Report Is Ready
+
+**Once Mastermind AI finishes, you MUST deliver the report to the user — don't just leave it on disk.** The orchestrator writes results to `results/final-task-<timestamp>-<pid>.md` and may also create other output files (e.g. `ANALYSIS_REPORT.md`).
+
+Delivery checklist:
+
+1. **Find the output file(s)** — check `results/` for the newest `.md` file (sorted by mtime) and scan the working directory for any additional report files the Executor created.
+2. **Verify the file** — read a few lines to confirm it's the real report, not a stub or error message. Check file size (>500 bytes is a good heuristic for a real report).
+3. **Send it** — include `MEDIA:/absolute/path/to/file` in your response to deliver the file natively (images, audio, video, or markdown documents). For text reports, you can also paste a concise summary alongside the file.
+4. **Clean up** — remove the generated report file from disk after sending (unless the user asks to keep it). Reports are artifacts of a single run and clutter the workspace.
+
+> 💡 **Why this matters:** The orchestrator runs in the background. The user has no way to know a file was written unless you proactively deliver it. Treat delivery as a non-negotiable part of every Mastermind AI run.
+
 ## When to Use This Skill
 
 Use Mastermind AI when the user has a **complex, multi-step task** that would take many iterations of me working on it — something that benefits from structured plan→do→check cycles with a time budget. Examples:
