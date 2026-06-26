@@ -224,26 +224,17 @@ def call_hermes(
 
     if role_call:
         timeout = max(MIN_ROLE_TIMEOUT_SEC, min(ROLE_TIMEOUT_SEC, remaining_sec))
-        base_args = [hermes_bin, "--silent"]
-        fallback_args = [hermes_bin]
     else:
         timeout = max(1, min(total_budget, remaining_sec + margin_sec))
-        base_args = [hermes_bin]
-        fallback_args = None
+
+    # Use chat --cli -Q (quiet) for clean programmatic output;
+    # -q passes the prompt directly without TTY/stdin issues.
+    base_args = [hermes_bin, "chat", "--cli", "-Q", "-q", prompt]
 
     for attempt in range(MAX_ATTEMPTS):
-        args = base_args
-        is_fallback_args = False
-
-        if attempt > 0 and role_call and fallback_args:
-            # Retry without --silent if first attempt failed
-            args = fallback_args
-            is_fallback_args = True
-
         try:
             proc = subprocess.run(
-                args,
-                input=prompt,
+                base_args,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -256,13 +247,10 @@ def call_hermes(
             if proc.returncode == 0:
                 return stdout
 
-            # Non-zero exit — capture partial output and retry
+            # Non-zero exit — log and retry
             if verbose:
-                _log(f"HERMES {attempt+1}", f"exit={proc.returncode}, {len(stdout)} bytes stderr")
+                _log(f"HERMES {attempt+1}", f"exit={proc.returncode}, {len(stdout)} bytes, {len(proc.stderr or '')} bytes stderr")
             if attempt < MAX_ATTEMPTS - 1:
-                continue
-            if role_call and not is_fallback_args and fallback_args:
-                # If --silent failed, try without it
                 continue
             return stdout if stdout else None
 
