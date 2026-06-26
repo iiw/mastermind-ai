@@ -140,7 +140,9 @@ MASTERMIND_HERMES_BIN=~/projects/mastermind-ai/tests/helpers/mock_hermes.py \
 
 ## When to Use This Skill
 
-Use Mastermind AI when the user has a **complex, multi-step task** that would take many iterations of me working on it — something that benefits from structured plan→do→check cycles with a time budget. Examples:
+**🚨 PRIMARY TRIGGER — time-bounded tasks:** Whenever the user says **"research X for N minutes"**, **"do Y for N minutes"**, or any equivalent ("spend 5 minutes on...", "take 10 minutes to..."), you MUST delegate to Mastermind AI instead of running web searches yourself. The `--max-minutes N` flag maps directly to the user's time budget. This ensures structured plan→do→check cycles with proper time management rather than ad-hoc manual tool calls that can exceed the budget.
+
+Other use cases:
 
 - "Research X and write a comprehensive report"
 - "Build a full project from scratch"
