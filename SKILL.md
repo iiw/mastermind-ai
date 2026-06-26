@@ -12,37 +12,124 @@ related_skills:
 
 Mastermind AI is a single-file Python engine (`mastermind.py`) that orchestrates Hermes through repeated **Delegator → Executor → Evaluator** cycles to accomplish a high-level task, then writes a final Markdown report.
 
-## 🚨 CRITICAL: File Delivery Protocol (Read Before Every Run)
+## Delivery: After the Report Is Ready
 
-Mastermind runs in the background. If you do not explicitly send the file, the user never sees it. **This is the #1 failure mode.** Follow this checklist in exact order:
+Once Mastermind AI finishes, you MUST deliver the generated report file to the user through the configured Hermes communication platform.
 
-### Pre-Flight Checklist
+Do not only paste a summary. Do not only leave the file on disk. Do not assume that the user can access the local filesystem.
 
-- [ ] Before starting the run, identify where the output file will be written (workdir or `results/`)
-- [ ] Budget time for delivery: include `read the file, then present it via MEDIA:` in the Executor instruction for the last iteration
-- [ ] After the run completes, DO NOT delete or clean up files until after you've confirmed delivery
+Mastermind writes the report — the **outer Hermes agent** (you) is responsible for delivering it. Nested Hermes subprocesses inside Mastermind AI cannot attach files to Telegram, Discord, Slack, or other user-facing platforms.
 
-### Delivery Checklist (execute after the run completes)
+### Delivery Flow
 
-```
-1.  Find the output files
-    └─ Check results/ for newest .md AND scan workdir for Executor artifacts
-2.  Verify the file  
-    └─ read_file() — confirm content is real (not a stub), check size >500 bytes
-3.  [NON-NEGOTIABLE] Include MEDIA:/absolute/path/to/file in your response
-    └─ The literal string "MEDIA:/path/to/file" MUST appear in your response text
-    └─ Describing the contents without MEDIA: does NOT send the file — this is the bug
-4.  [CRITICAL] Wait for user confirmation that they received the file
-    └─ Do NOT clean up files in the same turn as the MEDIA: directive
-    └─ Cleanup runs in a separate follow-up turn after user acknowledges delivery
-    └─ If user says they didn't get it, re-send immediately — do not delete first
-5.  Clean up (ONLY after confirmed delivery)
-    └─ rm the generated files from disk (unless user asks to keep them)
-```
+1. **Find output files**
 
-> ⚠️ **Known failure mode:** pasting a summary saying "full report below 👇" without the `MEDIA:` path — the user gets the summary but never receives the actual file. Always check your response for the `MEDIA:` directive before submitting.
->
-> ⚠️ **Another failure mode:** starting a background `rm` in the same turn as the `MEDIA:` directive — deletion races with delivery and the file is gone before the platform sends it. Cleanup must be a SEPARATE turn.
+   Read the structured stdout block from mastermind.py and extract the `path:` field. This points to the Finalizer result file:
+
+       results/final-task-<time_ns>-<pid>.md
+
+   Also scan the workspace root for larger Executor-created report files, for example:
+
+       ANALYSIS_REPORT.md
+       REPORT.md
+       FINAL_REPORT.md
+       *_REPORT.md
+       *_ANALYSIS.md
+
+2. **Choose the main deliverable**
+
+   Prefer the Executor-created report if it exists and is larger/more complete.
+
+   The file in `results/final-task-*.md` is usually the Finalizer summary. It is useful, but it may not be the main deliverable.
+
+   Selection priority:
+
+   1. Explicit report file requested by the task
+   2. Largest recent Markdown report in the workspace root
+   3. Newest recent Markdown report in the workspace root
+   4. Newest `results/final-task-*.md` file
+
+3. **Verify the selected file**
+
+   Before sending, verify:
+
+       test -f "$REPORT_PATH"
+       test -s "$REPORT_PATH"
+       wc -c "$REPORT_PATH"
+       head -n 20 "$REPORT_PATH"
+
+   The file should be a real report, not an empty stub, traceback, or placeholder. As a heuristic, a real report should usually be larger than 500 bytes.
+
+4. **Find the delivery target**
+
+   Use a configured delivery target. Prefer this order:
+
+   1. `MASTERMIND_DELIVERY_TARGET` environment variable
+   2. Existing known/default Hermes communication target
+   3. A target discovered with `hermes send --list`
+
+   Recommended environment variable:
+
+       export MASTERMIND_DELIVERY_TARGET="telegram"
+
+5. **Send the file as a native platform attachment**
+
+   Use Hermes platform delivery explicitly:
+
+       hermes send --to "$MASTERMIND_DELIVERY_TARGET" "MEDIA:$REPORT_PATH"
+
+   Example:
+
+       hermes send --to telegram "MEDIA:/home/star/projects/mastermind-ai/ANALYSIS_REPORT.md"
+
+   If a specific platform/channel/chat is configured, use it explicitly:
+
+       hermes send --to telegram:-1001234567890 "MEDIA:/absolute/path/to/report.md"
+       hermes send --to discord:#reports "MEDIA:/absolute/path/to/report.md"
+       hermes send --to slack:#reports "MEDIA:/absolute/path/to/report.md"
+
+6. **Confirm delivery**
+
+   If `hermes send` exits with code 0, tell the user:
+
+       Done — I sent the report file through <target>.
+       Local fallback path: <absolute path>
+
+   If `hermes send` fails, do NOT delete the file. Tell the user:
+
+       Mastermind AI completed and generated the report, but file delivery failed.
+       Local path: <absolute path>
+       Error: <short error summary>
+
+7. **Do not delete reports automatically**
+
+   Do not remove the generated report after sending unless the user explicitly asked for cleanup and delivery was confirmed.
+
+   Rationale: platform delivery may fail silently or be rejected by the gateway. Keeping the local file preserves the artifact.
+
+### Non-Negotiable Rules
+
+- The nested Hermes subprocesses inside Mastermind AI are not responsible for user-facing delivery.
+- The outer Hermes agent is responsible for delivery after mastermind.py exits.
+- Do not rely on the final chat response containing `MEDIA:/path` as the only delivery mechanism.
+- Use `hermes send --to <target> "MEDIA:/absolute/path/to/file"` for configured communication platforms.
+- Always verify the selected file before sending.
+- Prefer the main Executor-created report over the small Finalizer summary.
+- Never delete the report before delivery is confirmed.
+- Always include the local absolute path as a fallback in the user-facing response.
+
+### Helper Script
+
+A helper script is available at `scripts/deliver-latest-report.sh`. Usage:
+
+    MASTERMIND_DELIVERY_TARGET=telegram \
+      ~/projects/mastermind-ai/scripts/deliver-latest-report.sh ~/projects/mastermind-ai
+
+It finds the latest report (Executor-created first, Finalizer fallback) and sends it via `hermes send`.
+
+### Trigger Rule
+
+When a Mastermind AI run completes, delivery is not complete until the selected report file has been sent via `hermes send --to "$MASTERMIND_DELIVERY_TARGET" "MEDIA:$REPORT_PATH"` or delivery failure has been explicitly reported to the user with the local file path.
 
 ## Quick Start
 
@@ -145,8 +232,10 @@ When checking results after a run: **read the Executor artifact first**. The Fin
 | **Buffered stdout in bg** | When run in background mode, Python buffers stdout. The orchestrator's log output won't be visible until the process finishes. This is expected — results are written atomically to a file at the end. |
 | **Iteration timing is model-dependent** | The 30-45s/iteration estimate assumes a fast model (~10-15s per Hermes call). On slower models (deepseek-v4-flash, large Sonnets) each call takes ~40-50s, making each iteration **~100-150s**. Budget `--max-minutes` generously for slow models: a 10-min budget allows only ~4-6 iterations, not the 12-15 a fast model would give. |
 | **Finalizer timeout on slow models** | The Finalizer receives the largest prompt of all roles (full iteration history + up to 12K chars). On slow models the 60s `ROLE_TIMEOUT_SEC` (set in `mastermind.py` line 37) can fire. The orchestrator retries once then falls back to a minimal conclusion. The actual report is usually already written by the Executor — exit code 1 (partial success) is expected in this case. If you see `finalizer_fallback_used` warnings, the report is still valid; just check the output file. |
-| **💥 MEDIA: race with cleanup** | Never start a background `rm` in the same turn as a `MEDIA:` directive. File deletion races with platform delivery. Keep a copy until the user confirms receipt. |
-| **💥 MEDIA: not in response text** | Including `MEDIA:` in your *thought process* or describing the file contents in prose does NOT send it. The literal string must appear in your submitted response. |
+| **`hermes send` not configured** | The agent fails because `MASTERMIND_DELIVERY_TARGET` is unset. Set it (e.g. `export MASTERMIND_DELIVERY_TARGET=telegram`) or pass `--to` explicitly. Run `hermes send --list` to discover available targets. |
+| **Sent wrong file (Finalizer summary)** | The `results/final-task-*.md` file is a short wrap-up, not the main deliverable. Always prefer the Executor-created report in the workspace root first unless the task specifically asked for the summary. |
+| **Sent empty or truncated file** | The file may be a stub, traceback, or empty placeholder. Always verify with `test -s`, `wc -c`, and `head` before sending. Real reports should be >500 bytes. |
+| **Deleted report before delivery confirmed** | Platform delivery can fail silently or be rejected by the gateway. Never delete the local file unless the user explicitly asks for cleanup and you've confirmed the file was received. |
 
 ## Running Tests
 
