@@ -68,7 +68,7 @@ No API keys, no pip packages. Every "thinking" step is a separate Hermes subproc
 - **File artifact detection** — snapshots working dir before/after executor for changed files
 - **Duplicate instruction guard** — `INSTRUCTION_DEDUP_WINDOW=3`, normalised prefix matching
 - **Retry logic** — `MAX_ATTEMPTS=2` (1 initial + 1 retry) per Hermes call
-- **`--silent` fallback** — if role call with `--silent` fails, retry without it
+- **Programmatic Hermes calls** — Hermes is called as `hermes chat --cli -Q -q "{prompt}"` (not via stdin pipe). The `--silent` flag does NOT exist in the Hermes CLI; piping via stdin opens the TUI. The `-q` flag passes the prompt as a CLI argument with `-Q` suppressing the splash banner.
 
 ## Running Tests
 
