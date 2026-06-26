@@ -149,6 +149,8 @@ The orchestrator is aggressive about time:
         └── mock_slow_hermes.py     ← Configurable delay for timeout tests
 ```
 
+> 💡 **Hermes Skill** — You can add this skill to your Hermes Agent by copying `SKILL.md` into `~/.hermes/skills/software-development/mastermind-ai/SKILL.md` (or just drop the whole repo path `~/projects/mastermind-ai` into your Hermes skill search path). Your agent will then know how to orchestrate complex multi-step tasks through Mastermind AI out of the box.
+
 ---
 
 ## Design Principles
