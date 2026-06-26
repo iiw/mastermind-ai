@@ -2,6 +2,8 @@
 name: mastermind-ai
 category: software-development
 description: Orchestrate complex multi-step tasks using Mastermind AI — a lightweight one-file orchestrator that runs plan→do→check cycles via Hermes CLI subprocesses.
+related_skills:
+  - file-delivery
 ---
 
 # Mastermind AI — Orchestrator Agent
@@ -9,6 +11,38 @@ description: Orchestrate complex multi-step tasks using Mastermind AI — a ligh
 **Location:** `~/projects/mastermind-ai/`
 
 Mastermind AI is a single-file Python engine (`mastermind.py`) that orchestrates Hermes through repeated **Delegator → Executor → Evaluator** cycles to accomplish a high-level task, then writes a final Markdown report.
+
+## 🚨 CRITICAL: File Delivery Protocol (Read Before Every Run)
+
+Mastermind runs in the background. If you do not explicitly send the file, the user never sees it. **This is the #1 failure mode.** Follow this checklist in exact order:
+
+### Pre-Flight Checklist
+
+- [ ] Before starting the run, identify where the output file will be written (workdir or `results/`)
+- [ ] Budget time for delivery: include `read the file, then present it via MEDIA:` in the Executor instruction for the last iteration
+- [ ] After the run completes, DO NOT delete or clean up files until after you've confirmed delivery
+
+### Delivery Checklist (execute after the run completes)
+
+```
+1.  Find the output files
+    └─ Check results/ for newest .md AND scan workdir for Executor artifacts
+2.  Verify the file  
+    └─ read_file() — confirm content is real (not a stub), check size >500 bytes
+3.  [NON-NEGOTIABLE] Include MEDIA:/absolute/path/to/file in your response
+    └─ The literal string "MEDIA:/path/to/file" MUST appear in your response text
+    └─ Describing the contents without MEDIA: does NOT send the file — this is the bug
+4.  [CRITICAL] Wait for user confirmation that they received the file
+    └─ Do NOT clean up files in the same turn as the MEDIA: directive
+    └─ Cleanup runs in a separate follow-up turn after user acknowledges delivery
+    └─ If user says they didn't get it, re-send immediately — do not delete first
+5.  Clean up (ONLY after confirmed delivery)
+    └─ rm the generated files from disk (unless user asks to keep them)
+```
+
+> ⚠️ **Known failure mode:** pasting a summary saying "full report below 👇" without the `MEDIA:` path — the user gets the summary but never receives the actual file. Always check your response for the `MEDIA:` directive before submitting.
+>
+> ⚠️ **Another failure mode:** starting a background `rm` in the same turn as the `MEDIA:` directive — deletion races with delivery and the file is gone before the platform sends it. Cleanup must be a SEPARATE turn.
 
 ## Quick Start
 
@@ -83,7 +117,6 @@ See `references/exit-codes.md` for real-world examples and how to verify results
 ## Execution Patterns
 
 ### Research / Analysis Pattern
-
 Research and analysis tasks converge quickly — typically **2 iterations** (~4 min on deepseek-v4-flash):
 
 1. **Iteration 1** — Delegator asks to explore the project/codebase (read files, understand structure)
@@ -93,7 +126,6 @@ Research and analysis tasks converge quickly — typically **2 iterations** (~4 
 This is very efficient for codebase analysis, technology comparison, trend research, or architecture review tasks. Budget `--max-minutes 5` for focused analysis, `--max-minutes 10` for deeper research.
 
 ### Dual-Output Model
-
 The orchestrator produces output in **two locations** — don't look in only one:
 
 | Location | Writer | Content |
@@ -113,6 +145,8 @@ When checking results after a run: **read the Executor artifact first**. The Fin
 | **Buffered stdout in bg** | When run in background mode, Python buffers stdout. The orchestrator's log output won't be visible until the process finishes. This is expected — results are written atomically to a file at the end. |
 | **Iteration timing is model-dependent** | The 30-45s/iteration estimate assumes a fast model (~10-15s per Hermes call). On slower models (deepseek-v4-flash, large Sonnets) each call takes ~40-50s, making each iteration **~100-150s**. Budget `--max-minutes` generously for slow models: a 10-min budget allows only ~4-6 iterations, not the 12-15 a fast model would give. |
 | **Finalizer timeout on slow models** | The Finalizer receives the largest prompt of all roles (full iteration history + up to 12K chars). On slow models the 60s `ROLE_TIMEOUT_SEC` (set in `mastermind.py` line 37) can fire. The orchestrator retries once then falls back to a minimal conclusion. The actual report is usually already written by the Executor — exit code 1 (partial success) is expected in this case. If you see `finalizer_fallback_used` warnings, the report is still valid; just check the output file. |
+| **💥 MEDIA: race with cleanup** | Never start a background `rm` in the same turn as a `MEDIA:` directive. File deletion races with platform delivery. Keep a copy until the user confirms receipt. |
+| **💥 MEDIA: not in response text** | Including `MEDIA:` in your *thought process* or describing the file contents in prose does NOT send it. The literal string must appear in your submitted response. |
 
 ## Running Tests
 
@@ -124,19 +158,6 @@ python3 ~/projects/mastermind-ai/tests/test_mastermind.py
 MASTERMIND_HERMES_BIN=~/projects/mastermind-ai/tests/helpers/mock_hermes.py \
   ~/projects/mastermind-ai/mastermind.py --task "Test" --max-minutes 1
 ```
-
-## Delivery: After the Report Is Ready
-
-**Once Mastermind AI finishes, you MUST deliver the report to the user — don't just leave it on disk.** The orchestrator writes results to `results/final-task-<timestamp>-<pid>.md` and may also create other output files (e.g. `ANALYSIS_REPORT.md`) written by the Executor directly to the working directory.
-
-### Delivery Checklist
-
-1. **Find the output file(s)** — check `results/` for the newest `.md` file (sorted by mtime) and scan the working directory for any additional report files the Executor created.
-2. **Verify the file** — read a few lines to confirm it's the real report, not a stub or error message. Check file size (>500 bytes is a good heuristic for a real report).
-3. **🚨 SEND THE FILE AS A NATIVE ATTACHMENT — you MUST include `MEDIA:/absolute/path/to/file` in your response.** Pasting a summary without the file does NOT count as delivery. Your response must contain the MEDIA: directive so the platform transmits the file natively (image, audio, video, or markdown document). A punchy summary can accompany the file, but the file itself MUST be attached.
-4. **Clean up** — remove the generated report file(s) from disk after sending (unless the user asks to keep them). Reports are artifacts of a single run and clutter the workspace.
-
-> 💡 **Why this matters:** The orchestrator runs in the background. The user has no way to know a file was written unless you proactively deliver it. Treat delivery as a non-negotiable part of every Mastermind AI run. **Known failure mode:** pasting a summary text and saying "full report below 👇" without the `MEDIA:` path — the user gets the summary but never receives the actual file. Always check your response for the `MEDIA:` directive before submitting.
 
 ## When to Use This Skill
 
