@@ -4,6 +4,7 @@ category: software-development
 description: Orchestrate complex multi-step tasks using Mastermind AI — a lightweight one-file orchestrator that runs plan→do→check cycles via Hermes CLI subprocesses.
 related_skills:
   - file-delivery
+  - mastermind-deliver-final-report
 ---
 
 # Mastermind AI — Orchestrator Agent
@@ -120,10 +121,20 @@ Mastermind writes the report — the **outer Hermes agent** (you) is responsible
 
 ### Helper Script
 
-A helper script is available at `scripts/deliver-latest-report.sh`. Usage:
+Load the `mastermind-deliver-final-report` skill for the full delivery procedure and script:
 
-    MASTERMIND_DELIVERY_TARGET=telegram \
-      ~/projects/mastermind-ai/scripts/deliver-latest-report.sh ~/projects/mastermind-ai
+```yaml
+# Load this skill before delivering
+related_skills:
+  - mastermind-deliver-final-report
+```
+
+A shell helper script is at `scripts/deliver-latest-report.sh` in the skill's directory:
+
+```bash
+MASTERMIND_DELIVERY_TARGET=telegram \
+  bash ~/.hermes/skills/file-delivery/mastermind-deliver-final-report/scripts/deliver-latest-report.sh ~/projects/mastermind-ai
+```
 
 It finds the latest report (Executor-created first, Finalizer fallback) and sends it via `hermes send`.
 
