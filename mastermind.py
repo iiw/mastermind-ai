@@ -14,7 +14,6 @@ import argparse
 import json
 import os
 import shutil
-import socket
 import subprocess
 import sys
 import textwrap
@@ -227,12 +226,10 @@ def call_hermes(
         timeout = max(MIN_ROLE_TIMEOUT_SEC, min(ROLE_TIMEOUT_SEC, remaining_sec))
         base_args = [hermes_bin, "--silent"]
         fallback_args = [hermes_bin]
-        max_chars = MAX_ROLE_STDOUT_CHARS
     else:
         timeout = max(1, min(total_budget, remaining_sec + margin_sec))
         base_args = [hermes_bin]
         fallback_args = None
-        max_chars = MAX_EXECUTOR_STDOUT_CHARS
 
     for attempt in range(MAX_ATTEMPTS):
         args = base_args
@@ -254,12 +251,7 @@ def call_hermes(
                 cwd=cwd,
             )
 
-            # Truncate stdout post-capture
             stdout = proc.stdout or ""
-            truncated = False
-            if len(stdout) > max_chars:
-                stdout = stdout[:max_chars]
-                truncated = True
 
             if proc.returncode == 0:
                 return stdout
@@ -927,6 +919,10 @@ def run(
         if instruction is None:
             instruction = DELEGATOR_FALLBACK
             _log("✓ DELEG DONE", f"→ (fallback used)")
+
+        # Truncate Delegator output (role call limit)
+        if instruction and len(instruction) > MAX_ROLE_STDOUT_CHARS:
+            instruction = instruction[:MAX_ROLE_STDOUT_CHARS]
 
         # ── Record partial state: delegated ────────────────
         entry: dict = {
