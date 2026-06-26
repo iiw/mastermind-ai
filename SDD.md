@@ -3,7 +3,7 @@
 **Specification Document (SDD)**  
 Version: 1.5.2  
 Date: 2026-06-26  
-Author: Hermes Agent  
+Author: Viktor Buzanov  
 Status: 1.5.2 — implementation-ready  
 See also: [COMPLETENESS.md](./COMPLETENESS.md) — traceable acceptance checklist  
 See also: [TEST_CASES.md](./TEST_CASES.md) — automated test catalogue for every criterion
