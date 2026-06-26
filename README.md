@@ -4,6 +4,12 @@ A lightweight, single-file Python engine that takes a high-level task and
 orchestrates an AI agent (Hermes) through repeated **plan → do → check**
 cycles, then writes a final report.
 
+> **🔔 For Hermes Agent users:** When the user says *"research X for N minutes"* or
+> *"do Y for N minutes"*, this is the tool to use. The `--max-minutes N` flag
+> maps directly to their time budget — the orchestrator handles structured
+> plan→do→check cycles with proper time management instead of ad-hoc manual
+> tool calls.
+
 ```
                  ┌── plan ──▶  Delegator produces an instruction
                  │
