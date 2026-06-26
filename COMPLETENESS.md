@@ -254,7 +254,7 @@ Runtime has zero external dependencies. Tests may use pytest as a development-on
 | 10.4 | No `pyproject.toml` in project root | §10 | ✅ | Check |
 | 10.5 | No `venv/` in project root | §10 | ✅ | Check |
 | 10.6 | No `__pycache__/` committed to version control | §10 | ✅ | Check (gitignore) |
-| 10.7 | `README.md` does not yet exist (documented as "optional, future" in spec) | §10 | ❌ | Accepted omission |
+| 10.7 | `README.md` exists at project root — helpful overview for users | §10 | ✅ | `file exists` |
 | 10.8 | Workspace root is distinct from script root: `SDD.md`, `COMPLETENESS.md`, and `TEST_CASES.md` live in script root; `results/` and all runtime file operations use workspace root | §2.2a, §10 | ✅ | Code inspection; run with `--workdir /tmp` |
 
 ---
@@ -321,10 +321,10 @@ Runtime has zero external dependencies. Tests may use pytest as a development-on
 || §7. Output & Artifacts | 15 | 15 | 0 | 0 | 0 |
 || §8. Configuration | 16 | 16 | 0 | 0 | 0 |
 || §9. Error Handling & Resilience | 26 | 26 | 0 | 0 | 0 |
-|| §10. File Structure | 8 | 6 | 0 | 1 | 1 |
+|| §10. File Structure | 8 | 8 | 0 | 0 | 0 |
 || §11. Implementation Details | 24 | 23 | 0 | 0 | 1 |
 || §12. Cross-Cutting Concerns | 11 | 11 | 0 | 0 | 0 |
-|| **Total** | **208** | **205** | **0** | **1** | **2** |
+|| **Total** | **208** | **207** | **0** | **0** | **1** |
 
 ---
 
