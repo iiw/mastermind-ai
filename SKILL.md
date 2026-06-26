@@ -3,7 +3,6 @@ name: mastermind-ai
 category: software-development
 description: Orchestrate complex multi-step tasks using Mastermind AI — a lightweight one-file orchestrator that runs plan→do→check cycles via Hermes CLI subprocesses.
 related_skills:
-  - file-delivery
   - mastermind-deliver-final-report
 ---
 
@@ -15,132 +14,24 @@ Mastermind AI is a single-file Python engine (`mastermind.py`) that orchestrates
 
 ## Delivery: After the Report Is Ready
 
-Once Mastermind AI finishes, you MUST deliver the generated report file to the user through the configured Hermes communication platform.
+Once Mastermind AI finishes, you MUST deliver the generated report to the user. **Load the `mastermind-deliver-final-report` skill and follow its procedure** — it covers the full delivery flow:
 
-Do not only paste a summary. Do not only leave the file on disk. Do not assume that the user can access the local filesystem.
+- Find output files (Executor report vs Finalizer summary)
+- Choose the main deliverable
+- Verify the file
+- Send via `hermes send --to "$MASTERMIND_DELIVERY_TARGET" "MEDIA:$REPORT_PATH"`
+- Confirm delivery
+- Do not delete before confirmation
 
-Mastermind writes the report — the **outer Hermes agent** (you) is responsible for delivering it. Nested Hermes subprocesses inside Mastermind AI cannot attach files to Telegram, Discord, Slack, or other user-facing platforms.
+The delivery skill is declared in `related_skills` above and lives at:
 
-### Delivery Flow
-
-1. **Find output files**
-
-   Read the structured stdout block from mastermind.py and extract the `path:` field. This points to the Finalizer result file:
-
-       results/final-task-<time_ns>-<pid>.md
-
-   Also scan the workspace root for larger Executor-created report files, for example:
-
-       ANALYSIS_REPORT.md
-       REPORT.md
-       FINAL_REPORT.md
-       *_REPORT.md
-       *_ANALYSIS.md
-
-2. **Choose the main deliverable**
-
-   Prefer the Executor-created report if it exists and is larger/more complete.
-
-   The file in `results/final-task-*.md` is usually the Finalizer summary. It is useful, but it may not be the main deliverable.
-
-   Selection priority:
-
-   1. Explicit report file requested by the task
-   2. Largest recent Markdown report in the workspace root
-   3. Newest recent Markdown report in the workspace root
-   4. Newest `results/final-task-*.md` file
-
-3. **Verify the selected file**
-
-   Before sending, verify:
-
-       test -f "$REPORT_PATH"
-       test -s "$REPORT_PATH"
-       wc -c "$REPORT_PATH"
-       head -n 20 "$REPORT_PATH"
-
-   The file should be a real report, not an empty stub, traceback, or placeholder. As a heuristic, a real report should usually be larger than 500 bytes.
-
-4. **Find the delivery target**
-
-   Use a configured delivery target. Prefer this order:
-
-   1. `MASTERMIND_DELIVERY_TARGET` environment variable
-   2. Existing known/default Hermes communication target
-   3. A target discovered with `hermes send --list`
-
-   Recommended environment variable:
-
-       export MASTERMIND_DELIVERY_TARGET="telegram"
-
-5. **Send the file as a native platform attachment**
-
-   Use Hermes platform delivery explicitly:
-
-       hermes send --to "$MASTERMIND_DELIVERY_TARGET" "MEDIA:$REPORT_PATH"
-
-   Example:
-
-       hermes send --to telegram "MEDIA:/home/star/projects/mastermind-ai/ANALYSIS_REPORT.md"
-
-   If a specific platform/channel/chat is configured, use it explicitly:
-
-       hermes send --to telegram:-1001234567890 "MEDIA:/absolute/path/to/report.md"
-       hermes send --to discord:#reports "MEDIA:/absolute/path/to/report.md"
-       hermes send --to slack:#reports "MEDIA:/absolute/path/to/report.md"
-
-6. **Confirm delivery**
-
-   If `hermes send` exits with code 0, tell the user:
-
-       Done — I sent the report file through <target>.
-       Local fallback path: <absolute path>
-
-   If `hermes send` fails, do NOT delete the file. Tell the user:
-
-       Mastermind AI completed and generated the report, but file delivery failed.
-       Local path: <absolute path>
-       Error: <short error summary>
-
-7. **Do not delete reports automatically**
-
-   Do not remove the generated report after sending unless the user explicitly asked for cleanup and delivery was confirmed.
-
-   Rationale: platform delivery may fail silently or be rejected by the gateway. Keeping the local file preserves the artifact.
-
-### Non-Negotiable Rules
-
-- The nested Hermes subprocesses inside Mastermind AI are not responsible for user-facing delivery.
-- The outer Hermes agent is responsible for delivery after mastermind.py exits.
-- Do not rely on the final chat response containing `MEDIA:/path` as the only delivery mechanism.
-- Use `hermes send --to <target> "MEDIA:/absolute/path/to/file"` for configured communication platforms.
-- Always verify the selected file before sending.
-- Prefer the main Executor-created report over the small Finalizer summary.
-- Never delete the report before delivery is confirmed.
-- Always include the local absolute path as a fallback in the user-facing response.
-
-### Helper Script
-
-Load the `mastermind-deliver-final-report` skill for the full delivery procedure and script:
-
-```yaml
-# Load this skill before delivering
-related_skills:
-  - mastermind-deliver-final-report
 ```
-
-A shell helper script is at `scripts/deliver-latest-report.sh` in the skill's directory:
-
-```bash
-MASTERMIND_DELIVERY_TARGET=telegram \
-  bash ~/.hermes/skills/file-delivery/mastermind-deliver-final-report/scripts/deliver-latest-report.sh ~/projects/mastermind-ai
+~/.hermes/skills/software-development/mastermind-deliver-final-report/SKILL.md
 ```
-
-It finds the latest report (Executor-created first, Finalizer fallback) and sends it via `hermes send`.
 
 ### Trigger Rule
 
-When a Mastermind AI run completes, delivery is not complete until the selected report file has been sent via `hermes send --to "$MASTERMIND_DELIVERY_TARGET" "MEDIA:$REPORT_PATH"` or delivery failure has been explicitly reported to the user with the local file path.
+When a Mastermind AI run completes, delivery is not complete until the selected report file has been sent via the procedure in `mastermind-deliver-final-report` or delivery failure has been explicitly reported to the user with the local file path.
 
 ## Quick Start
 
