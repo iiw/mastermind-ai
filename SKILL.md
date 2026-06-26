@@ -133,10 +133,10 @@ MASTERMIND_HERMES_BIN=~/projects/mastermind-ai/tests/helpers/mock_hermes.py \
 
 1. **Find the output file(s)** — check `results/` for the newest `.md` file (sorted by mtime) and scan the working directory for any additional report files the Executor created.
 2. **Verify the file** — read a few lines to confirm it's the real report, not a stub or error message. Check file size (>500 bytes is a good heuristic for a real report).
-3. **Send it** — include `MEDIA:/absolute/path/to/file` in your response to deliver the file natively (images, audio, video, or markdown documents). For text reports, you can also paste a concise summary alongside the file.
+3. **🚨 SEND THE FILE AS A NATIVE ATTACHMENT — you MUST include `MEDIA:/absolute/path/to/file` in your response.** Pasting a summary without the file does NOT count as delivery. Your response must contain the MEDIA: directive so the platform transmits the file natively (image, audio, video, or markdown document). A punchy summary can accompany the file, but the file itself MUST be attached.
 4. **Clean up** — remove the generated report file(s) from disk after sending (unless the user asks to keep them). Reports are artifacts of a single run and clutter the workspace.
 
-> 💡 **Why this matters:** The orchestrator runs in the background. The user has no way to know a file was written unless you proactively deliver it. Treat delivery as a non-negotiable part of every Mastermind AI run.
+> 💡 **Why this matters:** The orchestrator runs in the background. The user has no way to know a file was written unless you proactively deliver it. Treat delivery as a non-negotiable part of every Mastermind AI run. **Known failure mode:** pasting a summary text and saying "full report below 👇" without the `MEDIA:` path — the user gets the summary but never receives the actual file. Always check your response for the `MEDIA:` directive before submitting.
 
 ## When to Use This Skill
 
